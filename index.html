@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>林火風險評估即時資訊</title>
+    <title>林火風險評估資訊</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f4f7f6; padding: 20px; }
         .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -17,14 +17,14 @@
         .status-warn { background-color: #f39c12; }
         .status-danger { background-color: #e74c3c; }
         #loading { text-align: center; color: #666; padding: 20px; }
-        .date-info { color: #7f8c8d; font-size: 0.9em; margin-bottom: 10px; }
+        .date-info { color: #e67e22; font-weight: bold; font-size: 1em; margin-bottom: 15px; background: #fff8f5; padding: 10px; border-radius: 5px; display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>林火風險即時監測表</h1>
-    <p>資料來源：農業部林業及自然保育署 (API 自動介接)</p>
+    <h1>林火風險評估資訊</h1>
+    <p>資料來源：農業部林業及自然保育署</p>
     <div id="date-display" class="date-info"></div>
     
     <div id="loading">即時資料載入中...</div>
@@ -44,12 +44,20 @@
 <script>
     const apiURL = "https://data.moa.gov.tw/service/opendata/ForestFireAlert.aspx";
 
-    // 取得日期字串的輔助函數 (格式: YYYYMMDD)
-    function getDateString(date) {
+    // 格式化日期為 YYYYMMDD 用於 API 比對
+    function getDateKey(date) {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
         const d = String(date.getDate()).padStart(2, '0');
         return y + m + d;
+    }
+
+    // 格式化日期為 YYYY-MM-DD 用於介面顯示
+    function formatDateDisplay(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return y + "-" + m + "-" + d;
     }
 
     async function fetchFireData() {
@@ -63,51 +71,56 @@
             const dateDisplay = document.getElementById('date-display');
 
             const now = new Date();
-            const todayStr = getDateString(now);
+            const todayKey = getDateKey(now);
             
             const yesterday = new Date();
             yesterday.setDate(now.getDate() - 1);
-            const yesterdayStr = getDateString(yesterday);
+            const yesterdayKey = getDateKey(yesterday);
 
-            // 1. 先嘗試找出今天的資料
-            let targetData = data.filter(item => item.CreateDate && item.CreateDate.startsWith(todayStr));
-            let usedDate = "今日";
+            // 1. 優先篩選今日資料
+            let targetData = data.filter(item => item.CreateDate && item.CreateDate.startsWith(todayKey));
+            let infoText = "目前顯示：今日 (" + formatDateDisplay(now) + ") 之即時預警資訊";
 
-            // 2. 如果今天沒資料，改找昨天的資料
+            // 2. 若今日無資料，改篩選昨日資料
             if (targetData.length === 0) {
-                targetData = data.filter(item => item.CreateDate && item.CreateDate.startsWith(yesterdayStr));
-                usedDate = "昨日";
+                targetData = data.filter(item => item.CreateDate && item.CreateDate.startsWith(yesterdayKey));
+                infoText = "提示：今日尚未更新，目前顯示昨日 (" + formatDateDisplay(yesterday) + ") 之預警資訊";
             }
 
             if (targetData.length > 0) {
                 loading.style.display = 'none';
                 table.style.display = 'table';
-                dateDisplay.innerHTML = "提示：目前顯示的是「" + usedDate + "」的風險資料。";
+                dateDisplay.style.display = 'block';
+                dateDisplay.innerHTML = "⚠️ " + infoText;
 
                 targetData.forEach(item => {
                     const row = document.createElement('tr');
+                    
+                    // 根據警告等級中文名稱決定顏色 [cite: 44]
+                    const warnText = item.warn_level_chinese || "安全";
                     let badgeClass = 'status-safe';
-                    if(item.warn_level_chinese !== '安全') {
-                        badgeClass = item.warn_level_chinese.includes('注意') ? 'status-warn' : 'status-danger';
+                    if(warnText !== '安全') {
+                        badgeClass = warnText.includes('注意') ? 'status-warn' : 'status-danger';
                     }
+
+                    // 處理日期格式 [cite: 44, 47]
                     const rawDate = item.CreateDate;
                     const formattedDate = rawDate.substring(0,4) + "-" + rawDate.substring(4,6) + "-" + rawDate.substring(6,8);
 
                     row.innerHTML = `
                         <td>${item.name}</td>
-                        <td><span class="status-badge ${badgeClass}">${item.warn_level_chinese}</span></td>
+                        <td><span class="status-badge ${badgeClass}">${warnText}</span></td>
                         <td>${formattedDate}</td>
                     `;
                     tableBody.appendChild(row);
                 });
             } else {
-                // 3. 兩天都沒資料
-                loading.innerHTML = "目前連兩日皆無資料更新，請稍後再試。";
+                loading.innerHTML = "目前連續兩日均無更新資料，請稍後再試。";
             }
 
         } catch (error) {
-            document.getElementById('loading').innerHTML = "資料載入失敗，請確認網路連線。";
-            console.error("API 載入錯誤:", error);
+            document.getElementById('loading').innerHTML = "資料介接失敗，請檢查網路連線。";
+            console.error("API 錯誤:", error);
         }
     }
 
