@@ -3,40 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>林火風險評估 - 最新監測資料</title>
+    <title>林火風險監測 - 最新資料</title>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f4f7f6; padding: 20px; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f4f7f6; padding: 20px; line-height: 1.6; }
         .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; border-left: 5px solid #e67e22; padding-left: 15px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        h1 { color: #2c3e50; border-left: 5px solid #e67e22; padding-left: 15px; margin-bottom: 10px; }
+        .info-bar { color: #666; font-size: 0.9em; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #e67e22; color: white; }
+        th { background-color: #e67e22; color: white; position: sticky; top: 0; }
         tr:nth-child(even) { background-color: #f9f9f9; }
         .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; color: white; display: inline-block; }
         .status-safe { background-color: #27ae60; }
         .status-warn { background-color: #f39c12; }
         .status-danger { background-color: #e74c3c; }
-        #loading { text-align: center; color: #666; padding: 20px; }
-        .info-bar { color: #666; font-size: 0.9em; margin-bottom: 10px; display: flex; justify-content: space-between; }
+        #loading { text-align: center; padding: 40px; color: #666; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>林火風險即時監測 (各站最新資料)</h1>
+    <h1>林火風險即時監測</h1>
     <div class="info-bar">
-        <span>資料來源：農業部林業及自然保育署</span>
-        <span id="data-count">載入中...</span>
+        資料來源：農業部林業及自然保育署 | <span id="data-count">載入中...</span>
     </div>
     
-    <div id="loading">即時資料解析中，請稍候...</div>
+    <div id="loading">正在連線至農業部 API 並篩選最新資料...</div>
     
     <table id="fire-table" style="display:none;">
         <thead>
             <tr>
-                <th>測站/國家森林遊樂區名稱</th>
+                <th>測站/園區名稱</th>
                 <th>林火指數等級</th>
-                <th>最新更新日期</th>
+                <th>更新日期</th>
             </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -44,61 +43,62 @@
 </div>
 
 <script>
-    // 農業部 API 路徑 [cite: 39]
-    const apiURL = "https://data.moa.gov.tw/service/opendata/ForestFireAlert.aspx";
+    async function loadData() {
+        const tableBody = document.getElementById('table-body');
+        const loading = document.getElementById('loading');
+        const table = document.getElementById('fire-table');
+        const countSpan = document.getElementById('data-count');
 
-    async function fetchLatestFireData() {
         try {
-            const response = await fetch(apiURL);
-            if (!response.ok) throw new Error("API 無法連線");
+            const api = "https://data.moa.gov.tw/service/opendata/ForestFireAlert.aspx";
+            const res = await fetch(api);
+            if (!res.ok) throw new Error("連線失敗");
             
-            const data = await response.json(); 
+            const rawData = await res.json();
 
-            // 1. 依照日期由新到舊排序 (使用 API 定義的 CreateDate) 
-            data.sort((a, b) => b.CreateDate.localeCompare(a.CreateDate));
+            // 1. 排序：讓最新日期 (CreateDate) 靠前
+            rawData.sort((a, b) => b.CreateDate.localeCompare(a.CreateDate));
 
-            // 2. 過濾重複項：只保留每個測站名稱(name)出現的第一筆資料 
-            const latestDataMap = new Map();
-            data.forEach(item => {
-                if (!latestDataMap.has(item.name)) {
-                    latestDataMap.set(item.name, item);
+            // 2. 篩選：每個測站(name)只留第一筆最新資料 
+            const latestMap = new Map();
+            rawData.forEach(item => {
+                if (!latestMap.has(item.name)) {
+                    latestMap.set(item.name, item);
                 }
             });
 
-            const tableBody = document.getElementById('table-body');
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('fire-table').style.display = 'table';
-            document.getElementById('data-count').innerText = `目前顯示站點數：${latestDataMap.size}`;
+            // 3. 顯示與渲染
+            loading.style.display = 'none';
+            table.style.display = 'table';
+            countSpan.innerText = "站點總數: " + latestMap.size;
 
-            // 3. 渲染過濾後的最新資料
-            latestDataMap.forEach(item => {
+            latestMap.forEach(item => {
                 const row = document.createElement('tr');
                 
-                // 處理等級顯示 
-                const warnText = item.warn_level_chinese || "未提供";
-                let badgeClass = 'status-safe';
-                if(warnText !== '安全') {
-                    badgeClass = warnText.includes('注意') ? 'status-warn' : 'status-danger';
+                // 處理等級標籤 
+                const levelTxt = item.warn_level_chinese || "無資料";
+                let style = "status-safe";
+                if (levelTxt !== "安全") {
+                    style = levelTxt.includes("注意") ? "status-warn" : "status-danger";
                 }
 
-                // 格式化日期：將 20260112000000 轉為 2026-01-12
-                const d = item.CreateDate;
-                const formattedDate = d ? `${d.substring(0,4)}-${d.substring(4,6)}-${d.substring(6,8)}` : "---";
+                // 處理日期格式 (YYYY-MM-DD) 
+                const d = item.CreateDate || "";
+                const dateTxt = d.length >= 8 ? d.substring(0,4) + "-" + d.substring(4,6) + "-" + d.substring(6,8) : "---";
 
-                row.innerHTML = `
-                    <td>${item.name}</td>
-                    <td><span class="status-badge ${badgeClass}">${warnText}</span></td>
-                    <td>${formattedDate}</td>
-                `;
+                row.innerHTML = "<td>" + item.name + "</td>" +
+                                "<td><span class='status-badge " + style + "'>" + levelTxt + "</span></td>" +
+                                "<td>" + dateTxt + "</td>";
                 tableBody.appendChild(row);
             });
-        } catch (error) {
-            console.error("錯誤詳情:", error);
-            document.getElementById('loading').innerHTML = "資料載入失敗，請檢查網路或 API 狀態。";
+
+        } catch (e) {
+            loading.innerText = "資料載入出錯，請重新整理網頁。";
+            console.error(e);
         }
     }
 
-    fetchLatestFireData();
+    loadData();
 </script>
 
 </body>
