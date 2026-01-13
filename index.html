@@ -3,102 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>林火風險監測 - 最新資料</title>
+    <title>林火風險評估即時資訊</title>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f4f7f6; padding: 20px; line-height: 1.6; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f4f7f6; padding: 20px; }
         .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; border-left: 5px solid #e67e22; padding-left: 15px; margin-bottom: 10px; }
-        .info-bar { color: #666; font-size: 0.9em; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; }
+        h1 { color: #2c3e50; border-left: 5px solid #e67e22; padding-left: 15px; }
+        
+        /* 表格樣式 */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #e67e22; color: white; position: sticky; top: 0; }
+        th { background-color: #e67e22; color: white; }
         tr:nth-child(even) { background-color: #f9f9f9; }
-        .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; color: white; display: inline-block; }
-        .status-safe { background-color: #27ae60; }
-        .status-warn { background-color: #f39c12; }
-        .status-danger { background-color: #e74c3c; }
-        #loading { text-align: center; padding: 40px; color: #666; font-weight: bold; }
+        
+        /* 狀態顏色標籤 */
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; color: white; }
+        .status-safe { background-color: #27ae60; }   /* 安全 */
+        .status-warn { background-color: #f39c12; }   /* 注意/警告 */
+        .status-danger { background-color: #e74c3c; } /* 危險 */
+
+        #loading { text-align: center; color: #666; padding: 20px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>林火風險即時監測</h1>
-    <div class="info-bar">
-        資料來源：農業部林業及自然保育署 | <span id="data-count">載入中...</span>
-    </div>
+    <h1>林火風險即時監測表</h1>
+    <p>資料來源：農業部林業及自然保育署 (API 自動介接)</p>
     
-    <div id="loading">正在連線至農業部 API 並篩選最新資料...</div>
+    <div id="loading">即時資料載入中，請稍候...</div>
     
     <table id="fire-table" style="display:none;">
         <thead>
             <tr>
-                <th>測站/園區名稱</th>
+                <th>測站/國家森林遊樂區名稱</th>
                 <th>林火指數等級</th>
                 <th>更新日期</th>
             </tr>
         </thead>
-        <tbody id="table-body"></tbody>
+        <tbody id="table-body">
+            </tbody>
     </table>
 </div>
 
 <script>
-    async function loadData() {
-        const tableBody = document.getElementById('table-body');
-        const loading = document.getElementById('loading');
-        const table = document.getElementById('fire-table');
-        const countSpan = document.getElementById('data-count');
+    const apiURL = "https://data.moa.gov.tw/service/opendata/ForestFireAlert.aspx";
 
+    async function fetchFireData() {
         try {
-            const api = "https://data.moa.gov.tw/service/opendata/ForestFireAlert.aspx";
-            const res = await fetch(api);
-            if (!res.ok) throw new Error("連線失敗");
+            const response = await fetch(apiURL);
+            const data = await response.json(); // 介接格式為 JSON [cite: 46]
             
-            const rawData = await res.json();
+            const tableBody = document.getElementById('table-body');
+            const loading = document.getElementById('loading');
+            const table = document.getElementById('fire-table');
 
-            // 1. 排序：讓最新日期 (CreateDate) 靠前
-            rawData.sort((a, b) => b.CreateDate.localeCompare(a.CreateDate));
+            // --- 新增：取得今天台灣日期的字串 (格式如：20260113) ---
+            const today = new Date();
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            const d = String(today.getDate()).padStart(2, '0');
+            const todayString = `${y}${m}${d}`; 
+            // ----------------------------------------------------
 
-            // 2. 篩選：每個測站(name)只留第一筆最新資料 
-            const latestMap = new Map();
-            rawData.forEach(item => {
-                if (!latestMap.has(item.name)) {
-                    latestMap.set(item.name, item);
-                }
-            });
-
-            // 3. 顯示與渲染
+            // 清空載入文字並顯示表格
             loading.style.display = 'none';
             table.style.display = 'table';
-            countSpan.innerText = "站點總數: " + latestMap.size;
 
-            latestMap.forEach(item => {
-                const row = document.createElement('tr');
-                
-                // 處理等級標籤 
-                const levelTxt = item.warn_level_chinese || "無資料";
-                let style = "status-safe";
-                if (levelTxt !== "安全") {
-                    style = levelTxt.includes("注意") ? "status-warn" : "status-danger";
+            data.forEach(item => {
+                // 檢查該筆資料的 CreateDate 是否包含今天的日期字串 
+                if (item.CreateDate && item.CreateDate.startsWith(todayString)) {
+                    const row = document.createElement('tr');
+                    
+                    // 根據警告等級決定顏色 
+                    let badgeClass = 'status-safe';
+                    if(item.warn_level_chinese !== '安全') {
+                        badgeClass = item.warn_level_chinese.includes('注意') ? 'status-warn' : 'status-danger';
+                    }
+
+                    // 格式化日期：原格式為 20241007000000 [cite: 47]
+                    const rawDate = item.CreateDate;
+                    const formattedDate = `${rawDate.substring(0,4)}-${rawDate.substring(4,6)}-${rawDate.substring(6,8)}`;
+
+                    row.innerHTML = `
+                        <td>${item.name}</td>
+                        <td><span class="status-badge ${badgeClass}">${item.warn_level_chinese}</span></td>
+                        <td>${formattedDate}</td>
+                    `;
+                    tableBody.appendChild(row);
                 }
-
-                // 處理日期格式 (YYYY-MM-DD) 
-                const d = item.CreateDate || "";
-                const dateTxt = d.length >= 8 ? d.substring(0,4) + "-" + d.substring(4,6) + "-" + d.substring(6,8) : "---";
-
-                row.innerHTML = "<td>" + item.name + "</td>" +
-                                "<td><span class='status-badge " + style + "'>" + levelTxt + "</span></td>" +
-                                "<td>" + dateTxt + "</td>";
-                tableBody.appendChild(row);
             });
+            
+            // 如果今天剛好沒資料，顯示提示
+            if (tableBody.innerHTML === "") {
+                loading.style.display = 'block';
+                loading.innerHTML = "今日目前尚無更新資料。";
+                table.style.display = 'none';
+            }
 
-        } catch (e) {
-            loading.innerText = "資料載入出錯，請重新整理網頁。";
-            console.error(e);
+        } catch (error) {
+            document.getElementById('loading').innerHTML = "資料載入失敗，請確認網路連線或稍後再試。";
+            console.error("API 載入錯誤:", error);
         }
     }
 
-    loadData();
+    // 啟動抓取資料
+    fetchFireData();
 </script>
 
 </body>
