@@ -57,49 +57,30 @@
             const loading = document.getElementById('loading');
             const table = document.getElementById('fire-table');
 
-            // --- 新增：取得今天台灣日期的字串 (格式如：20260113) ---
-            const today = new Date();
-            const y = today.getFullYear();
-            const m = String(today.getMonth() + 1).padStart(2, '0');
-            const d = String(today.getDate()).padStart(2, '0');
-            const todayString = `${y}${m}${d}`; 
-            // ----------------------------------------------------
-
             // 清空載入文字並顯示表格
             loading.style.display = 'none';
             table.style.display = 'table';
 
             data.forEach(item => {
-                // 檢查該筆資料的 CreateDate 是否包含今天的日期字串 
-                if (item.CreateDate && item.CreateDate.startsWith(todayString)) {
-                    const row = document.createElement('tr');
-                    
-                    // 根據警告等級決定顏色 
-                    let badgeClass = 'status-safe';
-                    if(item.warn_level_chinese !== '安全') {
-                        badgeClass = item.warn_level_chinese.includes('注意') ? 'status-warn' : 'status-danger';
-                    }
-
-                    // 格式化日期：原格式為 20241007000000 [cite: 47]
-                    const rawDate = item.CreateDate;
-                    const formattedDate = `${rawDate.substring(0,4)}-${rawDate.substring(4,6)}-${rawDate.substring(6,8)}`;
-
-                    row.innerHTML = `
-                        <td>${item.name}</td>
-                        <td><span class="status-badge ${badgeClass}">${item.warn_level_chinese}</span></td>
-                        <td>${formattedDate}</td>
-                    `;
-                    tableBody.appendChild(row);
+                const row = document.createElement('tr');
+                
+                // 根據警告等級決定顏色 
+                let badgeClass = 'status-safe';
+                if(item.warn_level_chinese !== '安全') {
+                    badgeClass = item.warn_level_chinese.includes('注意') ? 'status-warn' : 'status-danger';
                 }
-            });
-            
-            // 如果今天剛好沒資料，顯示提示
-            if (tableBody.innerHTML === "") {
-                loading.style.display = 'block';
-                loading.innerHTML = "今日目前尚無更新資料。";
-                table.style.display = 'none';
-            }
 
+                // 格式化日期：原格式為 20241007000000 [cite: 47]
+                const rawDate = item.CreateDate;
+                const formattedDate = `${rawDate.substring(0,4)}-${rawDate.substring(4,6)}-${rawDate.substring(6,8)}`;
+
+                row.innerHTML = `
+                    <td>${item.name}</td>
+                    <td><span class="status-badge ${badgeClass}">${item.warn_level_chinese}</span></td>
+                    <td>${formattedDate}</td>
+                `;
+                tableBody.appendChild(row);
+            });
         } catch (error) {
             document.getElementById('loading').innerHTML = "資料載入失敗，請確認網路連線或稍後再試。";
             console.error("API 載入錯誤:", error);
